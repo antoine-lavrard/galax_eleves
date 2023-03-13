@@ -115,15 +115,14 @@ int main(int argc, char ** argv)
 		float fps = timing.get_current_average_FPS();
 		avg_fps = (1-alpha)*avg_fps+alpha*fps;
 
-		std::cout << "State updates per second: " << fps << "average FPS : " << avg_fps;
+		std::cout << "State updates per second: " << fps;// << "average FPS : " << avg_fps;
 
 		if(validatePositions)
 		{
 			referenceModel->step();
                         float average_error, error_min, error_max;
                         std::tie(error_min, error_max, average_error) = model->compareParticlesState(*referenceModel, /*returnRelativeDistances*/ true);
-			std::cout << " ;               average distance vs reference: " << average_error
-                                  << "; min error : " << error_min << "; max error : " << error_max;
+			std::cout << " ;               average distance vs reference: " << average_error<< "; min error : " << error_min << "; max error : " << error_max;
 		}
 		std::cout << "\r" << std::flush;
 	}

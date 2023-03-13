@@ -2,7 +2,6 @@
 
 #include <cmath>
 #include <iostream>
-
 #include "Model_GPU.hpp"
 #include "kernel.cuh"
 
@@ -28,14 +27,17 @@ inline bool cuda_memcpy(void * dst, const void * src, size_t count, enum cudaMem
 		std::cout << "error: unable to copy buffer" << std::endl;
 		return false;
 	}
+
 	return true;
 }
 
 void update_position_gpu(float3* positionsGPU, float3* velocitiesGPU, float3* accelerationsGPU, float* massesGPU, int n_particles)
 {
 	update_position_cu(positionsGPU, velocitiesGPU, accelerationsGPU, massesGPU, n_particles);
+
 	cudaError_t cudaStatus;
 	cudaStatus = cudaDeviceSynchronize();
+	
 	if (cudaStatus != cudaSuccess)
 		std::cout << "error: unable to synchronize threads" << std::endl;
 }
@@ -55,6 +57,7 @@ Model_GPU
 	if (cudaStatus != cudaSuccess)
 		std::cout << "error: unable to setup cuda device" << std::endl;
 
+
 	for (int i = 0; i < n_particles; i++)
 	{
 		positionsf3[i].x     = initstate.positionsx [i];
@@ -69,8 +72,17 @@ Model_GPU
 	}
 
 	cuda_malloc((void**)&positionsGPU,     n_particles * sizeof(float3));
+	cuda_malloc((void**)&velocitiesGPU,     n_particles * sizeof(float3));
+	cuda_malloc((void**)&accelerationsGPU,     n_particles * sizeof(float3));
+	cuda_malloc((void**)&massesGPU,     n_particles * sizeof(float));
 
-	cuda_memcpy(positionsGPU,  positionsf3.data()     , n_particles * sizeof(float3), cudaMemcpyHostToDevice);
+	cuda_memcpy(positionsGPU,  positionsf3.data(), n_particles * sizeof(float3), cudaMemcpyHostToDevice);
+	cuda_memcpy(velocitiesGPU,  velocitiesf3.data(), n_particles * sizeof(float3), cudaMemcpyHostToDevice);
+	cuda_memcpy(accelerationsGPU,  accelerationsf3.data(), n_particles * sizeof(float3), cudaMemcpyHostToDevice);
+	cuda_memcpy(massesGPU,  initstate.masses.data(), n_particles * sizeof(float), cudaMemcpyHostToDevice);
+	
+
+
 }
 
 Model_GPU
@@ -82,13 +94,45 @@ Model_GPU
 void Model_GPU
 ::step()
 {
-	cuda_memcpy(positionsf3.data(), positionsGPU, n_particles * sizeof(float3), cudaMemcpyDeviceToHost);
+
+	
 	for (int i = 0; i < n_particles; i++)
 	{
+		accelerationsf3[i].x = 0;
+		accelerationsf3[i].y = 0;
+		accelerationsf3[i].z = 0;
+	}
+	
+	
+
+	cuda_memcpy(positionsGPU,  positionsf3.data(), n_particles * sizeof(float3), cudaMemcpyHostToDevice);
+
+
+	update_position_gpu(positionsGPU,velocitiesGPU,accelerationsGPU,massesGPU,n_particles);
+	
+
+	cuda_memcpy(accelerationsf3.data(),accelerationsGPU, n_particles * sizeof(float3), cudaMemcpyDeviceToHost);
+	
+	
+
+	const float G = 10;
+	for (int i = 0; i < n_particles; i++)
+	{
+
+		accelerationsf3[i].x = accelerationsf3[i].x * G;
+		accelerationsf3[i].y = accelerationsf3[i].y * G;
+		accelerationsf3[i].z = accelerationsf3[i].z * G;
+		velocitiesf3[i].x += accelerationsf3[i].x * 2.0f;
+		velocitiesf3[i].y += accelerationsf3[i].y * 2.0f;
+		velocitiesf3[i].z += accelerationsf3[i].z * 2.0f;
+	    positionsf3[i].x += velocitiesf3[i].x * 0.1f;
+		positionsf3[i].y += velocitiesf3[i].y * 0.1f;
+		positionsf3[i].z += velocitiesf3[i].z * 0.1f;
 		particles.x[i] = positionsf3[i].x;
 		particles.y[i] = positionsf3[i].y;
 		particles.z[i] = positionsf3[i].z;
 	}
+
 }
 
 #endif // GALAX_MODEL_GPU
