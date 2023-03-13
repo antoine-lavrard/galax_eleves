@@ -73,6 +73,8 @@ __device__ void compute_forces(const float &mj,float &dij, float &dij_mi){
     }
 }
 
+
+template<const int number_unrolling>
 __global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
 	 float3 * accelerationsGPU,float* massesGPU,const int n_particles)
 {	
@@ -80,12 +82,31 @@ __global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	
 	if (i >= n_particles) return;
+	
+	accelerationsGPU[i] = make_float3(0.0f, 0.0f, 0.0f);
+	
+	for(int j =0; j<n_particles; j+=number_unrolling){ 
+
+		float3 diff[number_unrolling];
+		float dij[number_unrolling];
+		float dij_mi[number_unrolling];
+		// can be unrolled since number_unrolling is a constant
+		for (int k=0; k<number_unrolling; k++){
+			compute_difference(positionsGPU[i], positionsGPU[j+k], diff[k], dij[k]);
+			compute_forces(massesGPU[j+k], dij[k], dij_mi[k]);
+
+			accelerationsGPU[i] =accelerationsGPU[i] + diff[k] * dij_mi[k];
+		}
+
+	}
+
+	// missing values in the last loop
 	float3 diff;
 	float dij;
 	float dij_mi;
-	accelerationsGPU[i] = make_float3(0.0f, 0.0f, 0.0f);
-	
-	for(int j =0; j<n_particles; j++){ // note that j<i, ineficient on gpu
+	int number_loop=n_particles/number_unrolling;
+	int next_value=number_loop*number_unrolling;
+	for(int j =next_value; j<n_particles; j++){ 
 		
 		compute_difference(positionsGPU[i], positionsGPU[j], diff, dij);
 		compute_forces(massesGPU[j], dij, dij_mi);
@@ -102,7 +123,7 @@ __global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
 // }
 
 static inline int divup(int a, int b) {
-	// how manyœblocks of size b should we use to represent a block of size a
+	// how many blocks of size b should we use to represent a block of size a
 	return (a + b - 1)/b;
 }
 
@@ -114,7 +135,7 @@ void update_position_cu(float3* positionsGPU,float3* velocitiesGPU, \
 	int nthreads = 128;
 	int nblocks = divup(n_particles, nthreads);
 
-	update_acc <<<nblocks, nthreads>>>(positionsGPU, velocitiesGPU, accelerationsGPU,\
+	update_acc<3> <<<nblocks, nthreads>>>(positionsGPU, velocitiesGPU, accelerationsGPU,\
 	 massesGPU, n_particles);
 
 	
