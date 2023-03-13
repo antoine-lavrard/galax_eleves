@@ -61,15 +61,15 @@ __device__ void compute_forces(const float &mi,const float &mj,float &dij, float
     }
 }
 
-__device__ void compute_forces(const float &mj,float &dij, float &dij_mi){
+__device__ void compute_forces(const float &mj,float &dij, float &dij_mj){
     if (dij > 1)
     {
 		dij=rsqrt(dij*dij*dij);
-        dij_mi = dij * mj;
+        dij_mj = dij * mj;
     }
     else
     {
-        dij_mi = mj;
+        dij_mj = mj;
     }
 }
 
@@ -85,32 +85,30 @@ __global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
 	
 	accelerationsGPU[i] = make_float3(0.0f, 0.0f, 0.0f);
 	
-	for(int j =0; j<n_particles; j+=number_unrolling){ 
+	for(int j =0; j+number_unrolling<n_particles; j+=number_unrolling){ 
 
 		float3 diff[number_unrolling];
 		float dij[number_unrolling];
-		float dij_mi[number_unrolling];
+		float dij_mj[number_unrolling];
 		// can be unrolled since number_unrolling is a constant
 		for (int k=0; k<number_unrolling; k++){
 			compute_difference(positionsGPU[i], positionsGPU[j+k], diff[k], dij[k]);
-			compute_forces(massesGPU[j+k], dij[k], dij_mi[k]);
+			compute_forces(massesGPU[j+k], dij[k], dij_mj[k]);
 
-			accelerationsGPU[i] =accelerationsGPU[i] + diff[k] * dij_mi[k];
+			accelerationsGPU[i] =accelerationsGPU[i] + diff[k] * dij_mj[k];
 		}
-
 	}
 
-	// missing values in the last loop
+	// additional values are put in a loop
 	float3 diff;
 	float dij;
-	float dij_mi;
+	float dij_mj;
 	int number_loop=n_particles/number_unrolling;
 	int next_value=number_loop*number_unrolling;
-	for(int j =next_value; j<n_particles; j++){ 
-		
+	for(int j =next_value; j<n_particles; j++){
 		compute_difference(positionsGPU[i], positionsGPU[j], diff, dij);
-		compute_forces(massesGPU[j], dij, dij_mi);
-		accelerationsGPU[i] =accelerationsGPU[i] + diff * dij_mi;
+		compute_forces(massesGPU[j], dij, dij_mj);
+		accelerationsGPU[i] =accelerationsGPU[i] + diff * dij_mj;
 	}
 
 }
