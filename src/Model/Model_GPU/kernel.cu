@@ -73,29 +73,22 @@ __device__ void compute_forces(const float &mj,float &dij, float &dij_mj){
     }
 }
 
-
 template<const int number_unrolling>
-__global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
-	 float3 * accelerationsGPU,float* massesGPU,const int n_particles)
-{	
-
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
+__device__ void update_acc_at_i_between_j(float3 &position_at_i,float3 &accelerationsGPU_at_i,\
+	float3 * positionsGPU,float* massesGPU,\
+	 const int min_j, const int max_j){
 	
-	if (i >= n_particles) return;
-	
-	accelerationsGPU[i] = make_float3(0.0f, 0.0f, 0.0f);
-	
-	for(int j =0; j+number_unrolling<n_particles; j+=number_unrolling){ 
+	for(int j =min_j; j+number_unrolling<max_j; j+=number_unrolling){ 
 
 		float3 diff[number_unrolling];
 		float dij[number_unrolling];
 		float dij_mj[number_unrolling];
 		// can be unrolled since number_unrolling is a constant
 		for (int k=0; k<number_unrolling; k++){
-			compute_difference(positionsGPU[i], positionsGPU[j+k], diff[k], dij[k]);
+			compute_difference(position_at_i, positionsGPU[j+k], diff[k], dij[k]);
 			compute_forces(massesGPU[j+k], dij[k], dij_mj[k]);
 
-			accelerationsGPU[i] =accelerationsGPU[i] + diff[k] * dij_mj[k];
+			accelerationsGPU_at_i =accelerationsGPU_at_i + diff[k] * dij_mj[k];
 		}
 	}
 
@@ -103,13 +96,69 @@ __global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
 	float3 diff;
 	float dij;
 	float dij_mj;
-	int number_loop=n_particles/number_unrolling;
-	int next_value=number_loop*number_unrolling;
-	for(int j =next_value; j<n_particles; j++){
-		compute_difference(positionsGPU[i], positionsGPU[j], diff, dij);
+	int number_loop=(max_j-min_j)/number_unrolling;
+	int next_value=min_j+number_loop*number_unrolling;
+	for(int j =next_value; j<max_j; j++){
+		compute_difference(position_at_i, positionsGPU[j], diff, dij);
 		compute_forces(massesGPU[j], dij, dij_mj);
-		accelerationsGPU[i] =accelerationsGPU[i] + diff * dij_mj;
+		accelerationsGPU_at_i =accelerationsGPU_at_i + diff * dij_mj;
 	}
+
+		
+}
+
+
+
+template<const int number_unrolling, const int number_particles_shared_memory>
+__global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
+	 float3 * accelerationsGPU,float* massesGPU,const int n_particles)
+{	
+
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	
+	if (i >= n_particles) return;
+	//should be useless, except for debug purpose
+	accelerationsGPU[i] = make_float3(0.0f, 0.0f, 0.0f);
+
+
+	// shared memory
+	__shared__ float3 positions_shared[number_particles_shared_memory];
+	__shared__ float masses_shared[number_particles_shared_memory];
+	//note that acceleration is not shared since it is acess once per thread
+	// this is also the case for the position at index i
+
+	int number_mem_load=(n_particles+number_particles_shared_memory-1)/number_particles_shared_memory;
+	for (int mem_load_id=0; mem_load_id<number_mem_load;mem_load_id++){
+		
+		// copy the data in the shared memory
+		int j=mem_load_id*number_particles_shared_memory;
+		
+		for (int k=0; k<number_particles_shared_memory; k++){
+			if (j+k<n_particles){
+				positions_shared[k]=positionsGPU[j+k];
+				masses_shared[k]=massesGPU[j+k];
+			}
+		}
+
+
+		__syncthreads();
+		// update the acceleration
+		int min_j= 0;
+		int max_j= number_particles_shared_memory;
+		
+		if (j+max_j>n_particles) max_j=n_particles-j;
+		update_acc_at_i_between_j<number_unrolling>(
+			positionsGPU[i], accelerationsGPU[i],
+			positions_shared,  masses_shared,\
+		min_j, max_j);
+		__syncthreads();
+
+	}
+
+	// update_acc_at_i_between_j<number_unrolling>(positionsGPU, velocitiesGPU, accelerationsGPU, massesGPU,\
+	// i, 0, n_particles);
+	
+	
 
 }
 
@@ -133,7 +182,7 @@ void update_position_cu(float3* positionsGPU,float3* velocitiesGPU, \
 	int nthreads = 128;
 	int nblocks = divup(n_particles, nthreads);
 
-	update_acc<3> <<<nblocks, nthreads>>>(positionsGPU, velocitiesGPU, accelerationsGPU,\
+	update_acc<3,256> <<<nblocks, nthreads>>>(positionsGPU, velocitiesGPU, accelerationsGPU,\
 	 massesGPU, n_particles);
 
 	
