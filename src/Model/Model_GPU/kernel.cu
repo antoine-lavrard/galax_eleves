@@ -109,25 +109,36 @@ __device__ void update_acc_at_i_between_j(float3 &position_at_i,float3 &accelera
 
 
 
-template<const int block_size,const int number_unrolling, const int number_particles_shared_memory>
+template<const int number_threads,const int number_unrolling, const int number_particles_shared_memory>
 __global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
 	 float3 * accelerationsGPU,float* massesGPU,const int n_particles)
 {	
 
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int thread_id=threadIdx.x;
 	
 	if (i >= n_particles) return;
 	//should be useless, except for debug purpose
 	accelerationsGPU[i] = make_float3(0.0f, 0.0f, 0.0f);
 
 
-	// shared memory
-	__shared__ float3 acc_shared[block_size];
+	// initialisation of the values : in shared memory
 	__shared__ float3 positions_shared[number_particles_shared_memory];
 	__shared__ float masses_shared[number_particles_shared_memory];
+	
+	float3 acceleration_at_i= make_float3(0.0f, 0.0f, 0.0f);
+	float3 position_at_i=positionsGPU[i];
+	// __shared__ float3 acceleration_at_i[number_threads];
+	// __shared__ float3 position_at_i[number_threads];
+
+	// acceleration_at_i[thread_id]= make_float3(0.0f, 0.0f, 0.0f);
+	// position_at_i[thread_id]=positionsGPU[i];
+
+
+
 	//note that acceleration is not shared since it is acess once per thread
 	// this is also the case for the position at index i
-	acc_shared[threadIdx.x]=accelerationsGPU[i];
+
 	int number_mem_load=(n_particles+number_particles_shared_memory-1)/number_particles_shared_memory;
 	for (int mem_load_id=0; mem_load_id<number_mem_load;mem_load_id++){
 		
@@ -149,14 +160,15 @@ __global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
 		
 		if (j+max_j>n_particles) max_j=n_particles-j;
 		update_acc_at_i_between_j<number_unrolling>(
-			positionsGPU[i], acc_shared[threadIdx.x],
+			position_at_i,acceleration_at_i,//position_at_i[thread_id], acceleration_at_i[thread_id],//accelerationsGPU[i],//acc_shared[threadIdx.x],
 			positions_shared,  masses_shared,\
 		min_j, max_j);
 		__syncthreads();
 
 	}
-	accelerationsGPU[i]=acc_shared[threadIdx.x];
-
+	accelerationsGPU[i]=acceleration_at_i;//[thread_id];
+	// update_acc_at_i_between_j<number_unrolling>(positionsGPU, velocitiesGPU, accelerationsGPU, massesGPU,\
+	// i, 0, n_particles);
 	
 	
 

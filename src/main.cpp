@@ -47,7 +47,6 @@ int main(int argc, char ** argv)
 	app.add_option("--display"       , display_type, "disable graphical display")
 	    ->check(CLI::IsMember({"SDL2", "NO"}));
 	app.add_flag("--validate", validatePositions, "compute error in positions against the non-accelerated reference code");
-
 	// parse arguments
 	CLI11_PARSE(app, argc, argv);
 
