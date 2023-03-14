@@ -129,7 +129,7 @@ cmake -E chdir "build" cmake -DCMAKE_BUILD_TYPE=Release -DGALAX_LINK_SDL2=OFF ..
 cmake -E chdir "build" cmake -DCMAKE_BUILD_TYPE=Release -DGALAX_LINK_CUDA=ON -DCUDA_TOOLKIT_ROOT_DIR="/usr" ..
 cmake --build "build" --config Release --parallel
 ./build/bin/galax -c CPU_FAST --validate
-./build/bin/galax -c GPU --validate # use GPU version
+./build/bin/galax -c GPU --validate 
 
 ```
 

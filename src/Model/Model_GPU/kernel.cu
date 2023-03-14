@@ -78,7 +78,9 @@ __device__ void update_acc_at_i_between_j(float3 &position_at_i,float3 &accelera
 	float3 * positionsGPU,float* massesGPU,\
 	 const int min_j, const int max_j){
 	
-	for(int j =min_j; j+number_unrolling<max_j; j+=number_unrolling){ 
+
+	//if the 
+	for(int j =min_j; j+number_unrolling<=max_j; j+=number_unrolling){ 
 
 		float3 diff[number_unrolling];
 		float dij[number_unrolling];
@@ -86,8 +88,14 @@ __device__ void update_acc_at_i_between_j(float3 &position_at_i,float3 &accelera
 		// can be unrolled since number_unrolling is a constant
 		for (int k=0; k<number_unrolling; k++){
 			compute_difference(position_at_i, positionsGPU[j+k], diff[k], dij[k]);
-			compute_forces(massesGPU[j+k], dij[k], dij_mj[k]);
+			// compute_forces(massesGPU[j+k], dij[k], dij_mj[k]);
+			// accelerationsGPU_at_i =accelerationsGPU_at_i + diff[k] * dij_mj[k];
+		}
 
+		for (int k=0; k<number_unrolling; k++){
+			compute_forces(massesGPU[j+k], dij[k], dij_mj[k]);
+		}
+		for (int k=0; k<number_unrolling; k++){
 			accelerationsGPU_at_i =accelerationsGPU_at_i + diff[k] * dij_mj[k];
 		}
 	}
@@ -96,9 +104,17 @@ __device__ void update_acc_at_i_between_j(float3 &position_at_i,float3 &accelera
 	float3 diff;
 	float dij;
 	float dij_mj;
+
+	
 	int number_loop=(max_j-min_j)/number_unrolling;
 	int next_value=min_j+number_loop*number_unrolling;
+	
+	// if (threadIdx.x==0 and blockIdx.x==0){
+	// 	printf("number loop : %d, from %d to %d and then to %d \n",number_loop,min_j,max_j,next_value);
+	// }
+	
 	for(int j =next_value; j<max_j; j++){
+
 		compute_difference(position_at_i, positionsGPU[j], diff, dij);
 		compute_forces(massesGPU[j], dij, dij_mj);
 		accelerationsGPU_at_i =accelerationsGPU_at_i + diff * dij_mj;
@@ -109,21 +125,33 @@ __device__ void update_acc_at_i_between_j(float3 &position_at_i,float3 &accelera
 
 
 
-template<const int number_unrolling, const int number_particles_shared_memory>
+template<const int number_threads,const int number_unrolling, const int number_particles_shared_memory>
 __global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
 	 float3 * accelerationsGPU,float* massesGPU,const int n_particles)
 {	
 
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int thread_id=threadIdx.x;
 	
 	if (i >= n_particles) return;
 	//should be useless, except for debug purpose
 	accelerationsGPU[i] = make_float3(0.0f, 0.0f, 0.0f);
 
 
-	// shared memory
+	// initialisation of the values : in shared memory
 	__shared__ float3 positions_shared[number_particles_shared_memory];
 	__shared__ float masses_shared[number_particles_shared_memory];
+	
+	float3 acceleration_at_i= make_float3(0.0f, 0.0f, 0.0f);
+	float3 position_at_i=positionsGPU[i];
+	// __shared__ float3 acceleration_at_i[number_threads];
+	// __shared__ float3 position_at_i[number_threads];
+
+	// acceleration_at_i[thread_id]= make_float3(0.0f, 0.0f, 0.0f);
+	// position_at_i[thread_id]=positionsGPU[i];
+
+
+
 	//note that acceleration is not shared since it is acess once per thread
 	// this is also the case for the position at index i
 
@@ -140,21 +168,24 @@ __global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
 			}
 		}
 
-
 		__syncthreads();
 		// update the acceleration
 		int min_j= 0;
 		int max_j= number_particles_shared_memory;
 		
 		if (j+max_j>n_particles) max_j=n_particles-j;
+
+		// if (thread_id==0 and blockIdx.x==0){
+		// 	printf("%d load id : %d , %d, %d  \n",number_mem_load,j,min_j,max_j);
+		// }
 		update_acc_at_i_between_j<number_unrolling>(
-			positionsGPU[i], accelerationsGPU[i],
+			position_at_i,acceleration_at_i,//position_at_i[thread_id], acceleration_at_i[thread_id],//accelerationsGPU[i],//acc_shared[threadIdx.x],
 			positions_shared,  masses_shared,\
 		min_j, max_j);
 		__syncthreads();
 
 	}
-
+	accelerationsGPU[i]=acceleration_at_i;//[thread_id];
 	// update_acc_at_i_between_j<number_unrolling>(positionsGPU, velocitiesGPU, accelerationsGPU, massesGPU,\
 	// i, 0, n_particles);
 	
@@ -182,10 +213,9 @@ void update_position_cu(float3* positionsGPU,float3* velocitiesGPU, \
 	int nthreads = 128;
 	int nblocks = divup(n_particles, nthreads);
 
-	update_acc<3,256> <<<nblocks, nthreads>>>(positionsGPU, velocitiesGPU, accelerationsGPU,\
+	update_acc<128,6,256> <<<nblocks, nthreads>>>(positionsGPU, velocitiesGPU, accelerationsGPU,\
 	 massesGPU, n_particles);
 
-	
 
 }
 
