@@ -145,12 +145,16 @@ __device__ void update_acc_at_i_between_j(float3 &position_at_i,float3 &accelera
 
 
 
-template<const int block_dim,const int number_unrolling, const int number_particles_shared_memory>
+template<const int block_dim,const int number_unrolling, const int number_particles_to_load_per_thread>
 __global__ void update_acc(float4 * positionAndMassGpu, float3 * velocitiesGPU,\
 	 float3 * accelerationsGPU,const int n_particles)
 {	
 
+
+	const int number_particles_shared_memory = block_dim * number_particles_to_load_per_thread;
+
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	
 	int thread_id=threadIdx.x;
 	//__shared__ float3 p[block_dim*number_particles_shared_memory];
 
@@ -170,6 +174,7 @@ __global__ void update_acc(float4 * positionAndMassGpu, float3 * velocitiesGPU,\
 	position_at_i.x=positionAndMassGpu[i].x;
 	position_at_i.y=positionAndMassGpu[i].y;
 	position_at_i.z=positionAndMassGpu[i].z;
+
 	// __shared__ float3 acceleration_at_i[number_threads];
 	// __shared__ float3 position_at_i[number_threads];
 
@@ -187,20 +192,22 @@ __global__ void update_acc(float4 * positionAndMassGpu, float3 * velocitiesGPU,\
 		// copy the data in the shared memory
 		int j=mem_load_id*number_particles_shared_memory;
 		
-		if (thread_id==0){
-			for (int k=0; k<number_particles_shared_memory; k++){
-			if (j+k<n_particles){
-				positions_shared[k].x=positionAndMassGpu[j+k].x;
-				positions_shared[k].y=positionAndMassGpu[j+k].y;
-				positions_shared[k].z=positionAndMassGpu[j+k].z;
-				masses_shared[k]=positionAndMassGpu[j+k].w;
+
+		for(int k=0; k<number_particles_to_load_per_thread;k++){
+			const int load_to = k*block_dim + threadIdx.x;
+			const int load_from = k*block_dim + threadIdx.x + j;
+
+			if (load_from < n_particles){
+				positions_shared[load_to].x=positionAndMassGpu[load_from].x;
+				positions_shared[load_to].y=positionAndMassGpu[load_from].y;
+				positions_shared[load_to].z=positionAndMassGpu[load_from].z;
+				masses_shared[load_to]=positionAndMassGpu[load_from].w;
+
 			}
-			
-		}
-		
 
 
 		}
+
 		
 		__syncthreads();
 		// update the acceleration
@@ -249,7 +256,7 @@ void update_position_cu(float4* positionAndMassGpu,float3* velocitiesGPU, \
 
 	// fps x N² iteration x 18 flops flops/s
 	// register : 32*10*k <4Kb
-	update_acc<nthreads,10,120> <<<nblocks, nthreads>>>(positionAndMassGpu, velocitiesGPU, accelerationsGPU,\
+	update_acc<nthreads,10,16> <<<nblocks, nthreads>>>(positionAndMassGpu, velocitiesGPU, accelerationsGPU,\
 	 n_particles);
 
 
