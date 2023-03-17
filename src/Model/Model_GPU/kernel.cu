@@ -146,8 +146,8 @@ __device__ void update_acc_at_i_between_j(float3 &position_at_i,float3 &accelera
 
 
 template<const int block_dim,const int number_unrolling, const int number_particles_shared_memory>
-__global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
-	 float3 * accelerationsGPU,float* massesGPU,const int n_particles)
+__global__ void update_acc(float4 * positionAndMassGpu, float3 * velocitiesGPU,\
+	 float3 * accelerationsGPU,const int n_particles)
 {	
 
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -165,7 +165,11 @@ __global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
 	__shared__ float masses_shared[number_particles_shared_memory];
 	
 	float3 acceleration_at_i= make_float3(0.0f, 0.0f, 0.0f);
-	float3 position_at_i=positionsGPU[i];
+
+	float3 position_at_i;
+	position_at_i.x=positionAndMassGpu[i].x;
+	position_at_i.y=positionAndMassGpu[i].y;
+	position_at_i.z=positionAndMassGpu[i].z;
 	// __shared__ float3 acceleration_at_i[number_threads];
 	// __shared__ float3 position_at_i[number_threads];
 
@@ -186,10 +190,12 @@ __global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
 		if (thread_id==0){
 			for (int k=0; k<number_particles_shared_memory; k++){
 			if (j+k<n_particles){
-				positions_shared[k]=positionsGPU[j+k];
-				masses_shared[k]=massesGPU[j+k];
+				positions_shared[k].x=positionAndMassGpu[j+k].x;
+				positions_shared[k].y=positionAndMassGpu[j+k].y;
+				positions_shared[k].z=positionAndMassGpu[j+k].z;
+				masses_shared[k]=positionAndMassGpu[j+k].w;
 			}
-
+			
 		}
 		
 
@@ -235,16 +241,16 @@ static inline int divup(int a, int b) {
 
 
 
-void update_position_cu(float3* positionsGPU,float3* velocitiesGPU, \
-	float3* accelerationsGPU, float* massesGPU, int n_particles)
+void update_position_cu(float4* positionAndMassGpu,float3* velocitiesGPU, \
+	float3* accelerationsGPU, int n_particles)
 {
 	const int nthreads = 64;
 	int nblocks = divup(n_particles, nthreads);
 
 	// fps x N² iteration x 18 flops flops/s
 	// register : 32*10*k <4Kb
-	update_acc<nthreads,10,120> <<<nblocks, nthreads>>>(positionsGPU, velocitiesGPU, accelerationsGPU,\
-	 massesGPU, n_particles);
+	update_acc<nthreads,10,120> <<<nblocks, nthreads>>>(positionAndMassGpu, velocitiesGPU, accelerationsGPU,\
+	 n_particles);
 
 
 }
