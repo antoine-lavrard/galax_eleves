@@ -39,6 +39,8 @@ __device__ float sum(const float3 &a) {
 
 __device__ void compute_difference(float3 &posi, float3 &posj, float3 &diff, float &dij)
 {
+	// 9 FLOPS
+	// 
 	diff= posj - posi;
 	dij=sum(diff*diff);
 }
@@ -47,7 +49,9 @@ __device__ void compute_difference(float3 &posi, float3 &posj, float3 &diff, flo
 
 
 __device__ void compute_forces(const float &mi,const float &mj,float &dij, float &dij_mi,float &dij_mj){
-    if (dij > 1)
+	// deux interaction
+    // 4 FLOPS
+	if (dij > 1)
     {
 		dij=rsqrt(dij*dij*dij);
 		dij_mi = dij * mj;
@@ -62,7 +66,9 @@ __device__ void compute_forces(const float &mi,const float &mj,float &dij, float
 }
 
 __device__ void compute_forces(const float &mj,float &dij, float &dij_mj){
-    if (dij > 1)
+	// 1 iteraction
+    // 3 FLOPS
+	if (dij > 1)
     {
 		dij=rsqrt(dij*dij*dij);
         dij_mj = dij * mj;
@@ -79,23 +85,37 @@ __device__ void update_acc_at_i_between_j(float3 &position_at_i,float3 &accelera
 	 const int min_j, const int max_j){
 	
 
-	//if the 
 	for(int j =min_j; j+number_unrolling<=max_j; j+=number_unrolling){ 
 
 		float3 diff[number_unrolling];
 		float dij[number_unrolling];
 		float dij_mj[number_unrolling];
 		// can be unrolled since number_unrolling is a constant
+		
+		// registers for j/number_unrolling
+		// 6 register for position and acceleration
+		
+		// 3* K +2*K register acess for writing
+		// 4*K loading register
+		
+		float3* positionGPUJ = &positionsGPU[j];
+		float* massesGPUJ = &massesGPU[j];
+
+		// 
+
+		// 
+		//#pragma unrolled
 		for (int k=0; k<number_unrolling; k++){
-			compute_difference(position_at_i, positionsGPU[j+k], diff[k], dij[k]);
-			// compute_forces(massesGPU[j+k], dij[k], dij_mj[k]);
+			compute_difference(position_at_i,positionGPUJ[k],diff[k], dij[k]); //positionsGPU[j+k], diff[k], dij[k]);
+			compute_forces(massesGPUJ[k], dij[k], dij_mj[k]);
 			// accelerationsGPU_at_i =accelerationsGPU_at_i + diff[k] * dij_mj[k];
 		}
 
+		// for (int k=0; k<number_unrolling; k++){
+		// 	compute_forces(massesGPUJ[k], dij[k], dij_mj[k]);//massesGPU[j+k], dij[k], dij_mj[k]);
+		// }
 		for (int k=0; k<number_unrolling; k++){
-			compute_forces(massesGPU[j+k], dij[k], dij_mj[k]);
-		}
-		for (int k=0; k<number_unrolling; k++){
+			// 6 flops
 			accelerationsGPU_at_i =accelerationsGPU_at_i + diff[k] * dij_mj[k];
 		}
 	}
@@ -125,13 +145,15 @@ __device__ void update_acc_at_i_between_j(float3 &position_at_i,float3 &accelera
 
 
 
-template<const int number_threads,const int number_unrolling, const int number_particles_shared_memory>
+template<const int block_dim,const int number_unrolling, const int number_particles_shared_memory>
 __global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
 	 float3 * accelerationsGPU,float* massesGPU,const int n_particles)
 {	
 
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	int thread_id=threadIdx.x;
+	//__shared__ float3 p[block_dim*number_particles_shared_memory];
+
 	
 	if (i >= n_particles) return;
 	//should be useless, except for debug purpose
@@ -161,13 +183,19 @@ __global__ void update_acc(float3 * positionsGPU, float3 * velocitiesGPU,\
 		// copy the data in the shared memory
 		int j=mem_load_id*number_particles_shared_memory;
 		
-		for (int k=0; k<number_particles_shared_memory; k++){
+		if (thread_id==0){
+			for (int k=0; k<number_particles_shared_memory; k++){
 			if (j+k<n_particles){
 				positions_shared[k]=positionsGPU[j+k];
 				masses_shared[k]=massesGPU[j+k];
 			}
-		}
 
+		}
+		
+
+
+		}
+		
 		__syncthreads();
 		// update the acceleration
 		int min_j= 0;
@@ -210,10 +238,12 @@ static inline int divup(int a, int b) {
 void update_position_cu(float3* positionsGPU,float3* velocitiesGPU, \
 	float3* accelerationsGPU, float* massesGPU, int n_particles)
 {
-	int nthreads = 128;
+	const int nthreads = 64;
 	int nblocks = divup(n_particles, nthreads);
 
-	update_acc<128,6,256> <<<nblocks, nthreads>>>(positionsGPU, velocitiesGPU, accelerationsGPU,\
+	// fps x N² iteration x 18 flops flops/s
+	// register : 32*10*k <4Kb
+	update_acc<nthreads,10,120> <<<nblocks, nthreads>>>(positionsGPU, velocitiesGPU, accelerationsGPU,\
 	 massesGPU, n_particles);
 
 

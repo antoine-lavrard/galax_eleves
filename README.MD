@@ -135,3 +135,6 @@ cmake --build "build" --config Release --parallel
 
 to see equivalent results in godbolt than g++ : 
 gcc -xc++ -lstdc++ -shared-libgcc
+
+
+cuobjdump --dump-sass
