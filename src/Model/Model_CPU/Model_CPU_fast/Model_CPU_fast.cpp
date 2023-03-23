@@ -302,6 +302,14 @@ void Model_CPU_fast
 		particles.z[i] += velocitiesz   [i] * 0.1f;
 	}
 
+    // printf("first pos : \n");
+
+	// printf("position x  %f \n",particles.x[0]);
+	// printf("position  y  %f \n",particles.y[0]);
+	// printf("position  z  %f \n",particles.z[0]);
+	//printf("particles %f \n",particles.x[0]);
+
+
 
 // OMP  version
 // #pragma omp parallel for
