@@ -235,7 +235,7 @@ __global__ void update_acc(float4 * positionAndMassGpu, float3 * velocitiesGPU,\
 }
 
 
-__global__ void maj_pos(float3 * positionsGPU, float3 * velocitiesGPU, float3 * accelerationsGPU)
+__global__ void maj_pos(float4 * positionAndMassGpu, float3 * velocitiesGPU, float3 * accelerationsGPU)
 {
  	unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
 	float G = 10; 
@@ -246,9 +246,9 @@ __global__ void maj_pos(float3 * positionsGPU, float3 * velocitiesGPU, float3 * 
 	velocitiesGPU[i].x += accelerationsGPU[i].x * 2.0f;
 	velocitiesGPU[i].y += accelerationsGPU[i].y * 2.0f;
 	velocitiesGPU[i].z += accelerationsGPU[i].z * 2.0f;
-	positionsGPU[i].x += velocitiesGPU[i].x * 0.1f;
-	positionsGPU[i].y += velocitiesGPU[i].y * 0.1f;
-	positionsGPU[i].z += velocitiesGPU[i].z * 0.1f;
+	positionAndMassGpu[i].x += velocitiesGPU[i].x * 0.1f;
+	positionAndMassGpu[i].y += velocitiesGPU[i].y * 0.1f;
+	positionAndMassGpu[i].z += velocitiesGPU[i].z * 0.1f;
 }
 
 static inline int divup(int a, int b) {
@@ -268,8 +268,7 @@ void update_position_cu(float4* positionAndMassGpu,float3* velocitiesGPU, \
 	// register : 32*10*k <4Kb
 	update_acc<nthreads,10,16> <<<nblocks, nthreads>>>(positionAndMassGpu, velocitiesGPU, accelerationsGPU,\
 	 n_particles);
-
-
+	maj_pos <<<nblocks, nthreads>>>(positionAndMassGpu, velocitiesGPU, accelerationsGPU);
 }
 
 
