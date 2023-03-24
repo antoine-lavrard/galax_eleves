@@ -106,23 +106,13 @@ void Model_GPU
 	update_position_gpu(positionsAndMassGPU,velocitiesGPU,accelerationsGPU,n_particles);
 	
 
-	cuda_memcpy(accelerationsf3.data(),accelerationsGPU, n_particles * sizeof(float3), cudaMemcpyDeviceToHost);
+	cuda_memcpy(positionsAndMassf4.data(), positionsAndMassGPU, n_particles * sizeof(float3), cudaMemcpyDeviceToHost);
 	
 	
 
 	const float G = 10;
 	for (int i = 0; i < n_particles; i++)
 	{
-
-		accelerationsf3[i].x = accelerationsf3[i].x * G;
-		accelerationsf3[i].y = accelerationsf3[i].y * G;
-		accelerationsf3[i].z = accelerationsf3[i].z * G;
-		velocitiesf3[i].x += accelerationsf3[i].x * 2.0f;
-		velocitiesf3[i].y += accelerationsf3[i].y * 2.0f;
-		velocitiesf3[i].z += accelerationsf3[i].z * 2.0f;
-	    positionsAndMassf4[i].x += velocitiesf3[i].x * 0.1f;
-		positionsAndMassf4[i].y += velocitiesf3[i].y * 0.1f;
-		positionsAndMassf4[i].z += velocitiesf3[i].z * 0.1f;
 		particles.x[i] = positionsAndMassf4[i].x;
 		particles.y[i] = positionsAndMassf4[i].y;
 		particles.z[i] = positionsAndMassf4[i].z;
