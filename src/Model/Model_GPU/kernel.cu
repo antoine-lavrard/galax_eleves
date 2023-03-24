@@ -235,11 +235,21 @@ __global__ void update_acc(float4 * positionAndMassGpu, float3 * velocitiesGPU,\
 }
 
 
-// __global__ void maj_pos(float3 * positionsGPU, float3 * velocitiesGPU, float3 * accelerationsGPU)
-// {
-// 	// unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-// }
+__global__ void maj_pos(float3 * positionsGPU, float3 * velocitiesGPU, float3 * accelerationsGPU)
+{
+ 	unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+	float G = 10; 
+	
+	accelerationsGPU[i].x = accelerationsGPU[i].x * G;
+	accelerationsGPU[i].y = accelerationsGPU[i].y * G;
+	accelerationsGPU[i].z = accelerationsGPU[i].z * G;
+	velocitiesGPU[i].x += accelerationsGPU[i].x * 2.0f;
+	velocitiesGPU[i].y += accelerationsGPU[i].y * 2.0f;
+	velocitiesGPU[i].z += accelerationsGPU[i].z * 2.0f;
+	positionsGPU[i].x += velocitiesGPU[i].x * 0.1f;
+	positionsGPU[i].y += velocitiesGPU[i].y * 0.1f;
+	positionsGPU[i].z += velocitiesGPU[i].z * 0.1f;
+}
 
 static inline int divup(int a, int b) {
 	// how many blocks of size b should we use to represent a block of size a
