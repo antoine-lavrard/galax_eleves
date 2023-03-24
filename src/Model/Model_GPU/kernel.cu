@@ -84,7 +84,7 @@ __device__ void update_acc_at_i_between_j(float3 &position_at_i,float3 &accelera
 	float3 * positionsGPU,float* massesGPU,\
 	 const int min_j, const int max_j){
 	
-
+		
 	for(int j =min_j; j+number_unrolling<=max_j; j+=number_unrolling){ 
 
 		float3 diff[number_unrolling];
@@ -98,10 +98,17 @@ __device__ void update_acc_at_i_between_j(float3 &position_at_i,float3 &accelera
 		// 3* K +2*K register acess for writing
 		// 4*K loading register
 		
-		float3* positionGPUJ = &positionsGPU[j];
-		float* massesGPUJ = &massesGPU[j];
+		// float3* positionGPUJ = &positionsGPU[j];
+		// float* massesGPUJ = &massesGPU[j];
 
 		// 
+		float3 positionGPUJ[number_unrolling];
+		float massesGPUJ[number_unrolling];
+
+		for (int k=0; k<number_unrolling; k++){
+			positionGPUJ[k]=positionsGPU[j+k];
+			massesGPUJ[k]=massesGPU[j+k];
+		}
 
 		// 
 		//#pragma unrolled
@@ -244,12 +251,12 @@ static inline int divup(int a, int b) {
 void update_position_cu(float4* positionAndMassGpu,float3* velocitiesGPU, \
 	float3* accelerationsGPU, int n_particles)
 {
-	const int nthreads = 64;
+	const int nthreads = 128;
 	int nblocks = divup(n_particles, nthreads);
 
 	// fps x N² iteration x 18 flops flops/s
 	// register : 32*10*k <4Kb
-	update_acc<nthreads,10,120> <<<nblocks, nthreads>>>(positionAndMassGpu, velocitiesGPU, accelerationsGPU,\
+	update_acc<nthreads,10,200	> <<<nblocks, nthreads>>>(positionAndMassGpu, velocitiesGPU, accelerationsGPU,\
 	 n_particles);
 
 
